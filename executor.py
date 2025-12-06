@@ -138,7 +138,7 @@ class TaskExecutor:
             "python": deque(), "cpp": deque(), "nodejs": deque(), "go": deque()
         }
         self.images = {
-            "python": config.get("DOCKER_PYTHON_IMAGE", "python:3.9-slim"),
+            "python": config.get("DOCKER_PYTHON_IMAGE", "nanogrid/python:3.9-fat"),
             "cpp": config.get("DOCKER_CPP_IMAGE", "gcc:latest"),
             "nodejs": config.get("DOCKER_NODEJS_IMAGE", "node:18-alpine"),
             "go": config.get("DOCKER_GO_IMAGE", "golang:1.19-alpine")
@@ -169,7 +169,7 @@ class TaskExecutor:
                 # 호스트 경로 마운트 (코드 실행용) - 읽기 전용으로 마운트하거나 필요한 경로만 마운트 권장
                 # 여기서는 편의상 전체 작업 루트를 마운트
                 volumes={self.cfg["DOCKER_WORK_DIR_ROOT"]: {"bind": "/workspace", "mode": "rw"}},
-                network_mode="none", # 인터넷 차단 (보안)
+                network_mode="bridge", # AI Endpoint 접근 허용
                 mem_limit="512m",    # 컨테이너 하드 리밋
                 cpu_quota=50000      # 0.5 CPU
             )
