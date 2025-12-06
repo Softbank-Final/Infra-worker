@@ -81,7 +81,10 @@ class NanoAgent:
                 function_id=body.get("functionId", "unknown"),
                 runtime=body.get("runtime", "python"),
                 s3_key=body["s3Key"],
-                memory_mb=body.get("memoryMb", 128)
+                runtime=body.get("runtime", "python"),
+                s3_key=body["s3Key"],
+                memory_mb=body.get("memoryMb", 128),
+                payload=body.get("input", {})
             )
             
             logger.info("🚀 Processing Task", id=task.request_id, runtime=task.runtime)

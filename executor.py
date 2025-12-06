@@ -1,7 +1,10 @@
 import os
 import shutil
 import time
+import shutil
+import time
 import zipfile
+import json
 import structlog
 import boto3
 import docker
@@ -21,8 +24,10 @@ class TaskMessage:
     function_id: str
     runtime: str
     s3_key: str
+    s3_key: str
     memory_mb: int = 128
     timeout_ms: int = 10000
+    payload: Dict = field(default_factory=dict)
 
 @dataclass
 class ExecutionResult:
@@ -248,10 +253,17 @@ class TaskExecutor:
             # Note: /output exists from Dockerfile, so we must remove it to create the symlink at /output
             setup_cmd = f"rm -rf /output && ln -s {container_work_dir}/output /output"
 
+            # Environment Variables
+            env_vars = {
+                "PAYLOAD": json.dumps(task.payload),
+                "AI_ENDPOINT": self.cfg.get("AI_ENDPOINT", "http://10.0.20.100:11434"),
+                "JOB_ID": task.request_id
+            }
+
             cmd = []
             if task.runtime == "python": 
                 cmd = ["sh", "-c", f"{setup_cmd} && python {container_work_dir}/main.py"]
-            elif task.runtime == "cpp": 
+            elif task.runtime == "cpp":  
                 # C++은 컴파일 후 실행
                 cmd = ["sh", "-c", f"{setup_cmd} && g++ {container_work_dir}/main.cpp -o {container_work_dir}/out && {container_work_dir}/out"]
             elif task.runtime == "nodejs": 
@@ -263,7 +275,8 @@ class TaskExecutor:
             # 4. 실행 (Exec)
             logger.info("Exec command", cmd=cmd, container=container.id[:12])
             exit_code, output = container.exec_run(
-                cmd, workdir="/workspace", demux=False
+                cmd, workdir="/workspace", demux=False,
+                environment=env_vars
             )
             
             # ✅ [FIX] 하드코딩 제거 & 실제 메모리 측정
