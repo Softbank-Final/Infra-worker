@@ -171,7 +171,7 @@ class TaskExecutor:
                 volumes={self.cfg["DOCKER_WORK_DIR_ROOT"]: {"bind": "/workspace", "mode": "rw"}},
                 network_mode="bridge", # AI Endpoint 접근 허용
                 mem_limit="1024m",   # Default (Will be updated in run)
-                cpu_quota=50000      # 0.5 CPU
+                cpu_quota=100000     # 1.0 CPU
             )
             c.pause()
             self.pools[runtime].append(c.id)
