@@ -25,8 +25,9 @@ class TaskMessage:
     runtime: str
     s3_key: str
     s3_key: str
+    s3_bucket: Optional[str] = None
     memory_mb: int = 128
-    timeout_ms: int = 10000
+    timeout_ms: int = 300000
     payload: Dict = field(default_factory=dict)
 
 @dataclass
@@ -207,7 +208,8 @@ class TaskExecutor:
         local_dir.mkdir(parents=True, exist_ok=True)
         
         zip_path = local_dir / "code.zip"
-        self.s3.download_file(self.cfg["S3_CODE_BUCKET"], task.s3_key, str(zip_path))
+        bucket = task.s3_bucket if task.s3_bucket else self.cfg["S3_CODE_BUCKET"]
+        self.s3.download_file(bucket, task.s3_key, str(zip_path))
         
         # ✅ [FIX] Zip Slip 방지 코드 적용
         with zipfile.ZipFile(zip_path, "r") as zf:
