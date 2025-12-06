@@ -275,11 +275,40 @@ class TaskExecutor:
                 cmd = ["sh", "-c", f"{setup_cmd} && cd {container_work_dir} && go build -o main main.go && ./main"]
 
             # 4. 실행 (Exec)
-            logger.info("Exec command", cmd=cmd, container=container.id[:12])
-            exit_code, output = container.exec_run(
-                cmd, workdir="/workspace", demux=False,
-                environment=env_vars
-            )
+            # 4. 실행 (Exec) with Timeout
+            logger.info("Exec command", cmd=cmd, container=container.id[:12], timeout_ms=task.timeout_ms)
+            
+            exec_result = {"exit_code": None, "output": b""}
+            
+            def run_docker_exec():
+                try:
+                    ec, out = container.exec_run(
+                        cmd, workdir="/workspace", demux=False,
+                        environment=env_vars
+                    )
+                    exec_result["exit_code"] = ec
+                    exec_result["output"] = out
+                except Exception as e:
+                    exec_result["error"] = e
+
+            import threading
+            exec_thread = threading.Thread(target=run_docker_exec)
+            exec_thread.start()
+            
+            # Divide by 1000 for seconds
+            exec_thread.join(timeout=task.timeout_ms / 1000.0)
+            
+            if exec_thread.is_alive():
+                logger.error("Execution Timed Out", timeout_ms=task.timeout_ms)
+                # 컨테이너 강제 종료 (finally 블록에서 삭제됨)
+                container.kill()
+                raise TimeoutError(f"Execution timed out after {task.timeout_ms}ms")
+            
+            if "error" in exec_result:
+                raise exec_result["error"]
+                
+            exit_code = exec_result["exit_code"]
+            output = exec_result["output"]
             
             # ✅ [FIX] 하드코딩 제거 & 실제 메모리 측정
             try:
