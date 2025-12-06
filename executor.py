@@ -32,7 +32,9 @@ class ExecutionResult:
     stderr: str
     duration_ms: int
     peak_memory_bytes: Optional[int] = None
+    allocated_memory_mb: Optional[int] = None
     optimization_tip: Optional[str] = None
+    estimated_savings: Optional[str] = None
     output_files: List[str] = field(default_factory=list)
 
     def to_dict(self):
@@ -44,7 +46,9 @@ class ExecutionResult:
             "stderr": self.stderr,
             "durationMs": self.duration_ms,
             "peakMemoryBytes": self.peak_memory_bytes,
+            "allocatedMemoryMb": self.allocated_memory_mb,
             "optimizationTip": self.optimization_tip,
+            "estimatedSavings": self.estimated_savings,
             "outputFiles": self.output_files
         }
 
@@ -52,23 +56,39 @@ class ExecutionResult:
 
 class AutoTuner:
     """메모리 최적화 팁 생성 (비용 절감 핵심)"""
+    COST_PER_MB_HOUR = 0.00005  # $0.00005 (임의의 AWS EC2 GB-hour 비용 기반 추정)
+
     @staticmethod
-    def analyze(peak_bytes: int, allocated_mb: int) -> Optional[str]:
-        if not peak_bytes: return None
+    def analyze(peak_bytes: int, allocated_mb: int):
+        if not peak_bytes: return None, None
         if allocated_mb <= 0: allocated_mb = 128  # 0 나누기 방어
 
-        peak_mb = peak_bytes // (1024 * 1024)
-        ratio = peak_mb / allocated_mb
+        peak_mb = peak_bytes / (1024 * 1024)
         
+        # 1. 팁 생성
+        tip = None
+        ratio = peak_mb / allocated_mb
         if ratio < 0.3:
             rec = max(int(peak_mb * 1.5), 10) # 최소 10MB 권장
             saved_percent = int((1 - (rec / allocated_mb)) * 100)
-            if saved_percent <= 0: return None
-            return f"💡 Tip: 실제 사용량({peak_mb}MB)이 할당량({allocated_mb}MB)보다 훨씬 적습니다. {rec}MB로 줄여 비용을 약 {saved_percent}% 절감하세요."
+            if saved_percent > 0:
+                tip = f"💡 Tip: 실제 사용량({int(peak_mb)}MB)이 할당량({allocated_mb}MB)보다 훨씬 적습니다. {rec}MB로 줄여 비용을 약 {saved_percent}% 절감하세요."
         elif ratio > 0.9:
             rec = int(peak_mb * 1.2)
-            return f"⚠️ Warning: 메모리가 부족합니다({peak_mb}MB). {rec}MB 이상으로 늘리는 것을 권장합니다."
-        return None
+            tip = f"⚠️ Warning: 메모리가 부족합니다({int(peak_mb)}MB). {rec}MB 이상으로 늘리는 것을 권장합니다."
+
+        # 2. 비용 절감액 계산 (비즈니스 관점)
+        # 가정: 기존 VM 오버헤드 1024MB 대비 절감
+        vm_overhead_mb = 1024
+        saved_mb = vm_overhead_mb - peak_mb
+        estimated_savings = None
+        
+        if saved_mb > 0:
+            # 월간 절감액 (730시간 기준)
+            monthly_saving = saved_mb * AutoTuner.COST_PER_MB_HOUR * 730
+            estimated_savings = f"${monthly_saving:.2f}/month (vs 1GB VM)"
+
+        return tip, estimated_savings
 
 class CloudWatchPublisher:
     """ASG 연동을 위한 CloudWatch 메트릭 전송"""
@@ -230,17 +250,17 @@ class TaskExecutor:
             # ✅ [FIX] 하드코딩 제거 & 실제 메모리 측정
             try:
                 stats = container.stats(stream=False)
-                # cgroup v1: usage, v2: may need adaptation. Docker API usually handles conversion.
-                usage = stats['memory_stats'].get('usage', 0)
-                # 캐시 메모리 제외한 실제 사용량 (RSS)이 더 정확할 수 있음.
-                # stats_mem = stats['memory_stats'].get('stats', {})
-                # usage = usage - stats_mem.get('cache', 0)
+                # Max usage is more accurate for peak memory during execution
+                usage = stats['memory_stats'].get('max_usage', 0)
+                # Fallback to usage if max_usage is 0 or missing (rare in normal docker)
+                if usage == 0:
+                    usage = stats['memory_stats'].get('usage', 0)
             except Exception as e:
                 logger.warning("Failed to get metrics", error=str(e))
                 usage = 0
             
             # 6. Auto-Tuning & CloudWatch
-            tip = AutoTuner.analyze(usage, task.memory_mb)
+            tip, savings = AutoTuner.analyze(usage, task.memory_mb)
             self.cw.publish_peak_memory(task.function_id, task.runtime, usage)
             
             output_str = output.decode('utf-8', errors='replace')
@@ -253,7 +273,9 @@ class TaskExecutor:
                 stderr="",
                 duration_ms=int((time.time() - start_time) * 1000),
                 peak_memory_bytes=usage,
-                optimization_tip=tip
+                allocated_memory_mb=task.memory_mb,
+                optimization_tip=tip,
+                estimated_savings=savings
             )
 
         except Exception as e:
