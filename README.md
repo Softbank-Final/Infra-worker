@@ -26,28 +26,28 @@
 
 ```mermaid
 flowchart TD
-    subgraph AWS Cloud
-        SQS[AWS SQS Queue] -->|1. Long Polling| Agent[NanoAgent (Worker)]
-        S3_Code[S3 Bucket (Code)] -->|2. Download Code| Agent
+    subgraph "AWS Cloud"
+        SQS[AWS SQS Queue] -->|"1. Long Polling"| Agent["NanoAgent (Worker)"]
+        S3_Code["S3 Bucket (Code)"] -->|"2. Download Code"| Agent
     end
 
-    subgraph Worker Node
-        Agent -->|3. Acquire Container| WarmPool[Warm Pool]
-        WarmPool -->|4. Execute| Container[Docker Container]
+    subgraph "Worker Node"
+        Agent -->|"3. Acquire Container"| WarmPool[Warm Pool]
+        WarmPool -->|"4. Execute"| Container[Docker Container]
         
-        subgraph Docker Environment
-            Container -->|5. Run Code| Runtime[Runtime (Python/Node/C++/Go)]
+        subgraph "Docker Environment"
+            Container -->|"5. Run Code"| Runtime["Runtime (Python/Node/C++/Go)"]
         end
         
-        Runtime -->|6. Logs & Output| Agent
-        Agent -->|7. Analyze Memory| AutoTuner[AutoTuner]
+        Runtime -->|"6. Logs & Output"| Agent
+        Agent -->|"7. Analyze Memory"| AutoTuner[AutoTuner]
     end
 
-    subgraph Data & Monitoring
-        Agent -->|8. Pub/Sub Result| Redis[Redis]
-        Agent -->|9. Upload Output| S3_Out[S3 Bucket (Output)]
-        Agent -->|10. Metrics| Prometheus[Prometheus]
-        Agent -->|11. CloudWatch| CW[CloudWatch]
+    subgraph "Data & Monitoring"
+        Agent -->|"8. Pub/Sub Result"| Redis[Redis]
+        Agent -->|"9. Upload Output"| S3_Out["S3 Bucket (Output)"]
+        Agent -->|"10. Metrics"| Prometheus[Prometheus]
+        Agent -->|"11. CloudWatch"| CW[CloudWatch]
     end
 ```
 
